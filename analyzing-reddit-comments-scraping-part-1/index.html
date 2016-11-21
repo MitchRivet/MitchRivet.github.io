@@ -15,8 +15,8 @@
 
 
 <meta name="twitter:title" content="Analyzing Reddit Comments: Scraping (Part 1)"/>
-<meta name="twitter:description" content="A place to start when getting into data science is to find data sets that are personally relevant and/or interesting. one place i like to get data to understand more about internet discourse is reddit.
-How to scrape reddit if we want to download data from reddit, we essentially have two options. one is making an oauth request which includes logging into the reddit api with a reddit account. the downside to this method is that each user is limited to 60 oauth requests per hour, which makes it hard to download an entire comment thread and all of the relevant user meta data from comments in the thread (popular discussions usually break over 1,000 comments)."/>
+<meta name="twitter:description" content="We are in an age where internet discourse has a serious impact on virtually every aspect of our society, making the analysis of user comments in a site like reddit a tantalizing data set (for better and worse). In this tutorial, I will go over:
+ Scraping reddit Setting up a basic Node.js/ExpressJS server Using ES6 generators to help parse a set of nested comments and give comments a basic sentiment score  Final code found in this repository."/>
 
 
 
@@ -34,7 +34,7 @@ How to scrape reddit if we want to download data from reddit, we essentially hav
     
     <meta property="og:article:tag" content="beginner" />
     
-    <meta property="og:article:tag" content="NodeJs" />
+    <meta property="og:article:tag" content="Node.js" />
     
     <meta property="og:article:tag" content="ExpressJs" />
     
@@ -84,7 +84,7 @@ How to scrape reddit if we want to download data from reddit, we essentially hav
     </a>
     <ul>
         
-        
+
         
             
             <li class="nav-opened" role="presentation">
@@ -98,11 +98,21 @@ How to scrape reddit if we want to download data from reddit, we essentially hav
         
             
             <li class="nav-opened" role="presentation">
-            	<a href="/about">About</a>
+            	<a href="/portfolio/about">About</a>
+            </li>
+        
+            
+            <li class="nav-opened" role="presentation">
+            	<a href="/portfolio/music">Music</a>
+            </li>
+        
+            
+            <li class="nav-opened" role="presentation">
+            	<a href="/tags/tutorial/">Tutorials</a>
             </li>
         
     </ul>
-    
+
     
     <a class="subscribe-button icon-feed" href="http://mitchrivet.github.io/index.xml">Subscribe</a>
     
@@ -152,7 +162,7 @@ How to scrape reddit if we want to download data from reddit, we essentially hav
          
           <span class="post-tag small"><a href="http://mitchrivet.github.io/tags/beginner/">#beginner</a></span>
          
-          <span class="post-tag small"><a href="http://mitchrivet.github.io/tags/nodejs/">#NodeJs</a></span>
+          <span class="post-tag small"><a href="http://mitchrivet.github.io/tags/node.js/">#Node.js</a></span>
          
           <span class="post-tag small"><a href="http://mitchrivet.github.io/tags/expressjs/">#ExpressJs</a></span>
          
@@ -164,21 +174,44 @@ How to scrape reddit if we want to download data from reddit, we essentially hav
     <section class="post-content">
       
 
-<p>A place to start when getting into data science is to find data sets that are personally relevant and/or interesting. one place i like to get data to understand more about internet discourse is reddit.</p>
+<p><br>
+We are in an age where internet discourse has a serious impact on virtually every aspect of our society, making the analysis of user comments in a site like reddit a tantalizing data set (for better and worse). In this tutorial, I will go over:</p>
+
+<ol>
+<li>Scraping reddit</li>
+<li>Setting up a basic Node.js/ExpressJS server</li>
+<li>Using ES6 generators to help parse a set of nested comments and give comments a basic sentiment score</li>
+</ol>
+
+<p><a href="https://github.com/MitchRivet/reddit_scrape_tutorial">Final code found in this repository</a>.</p>
 
 <h2 id="how-to-scrape-reddit">How to scrape reddit</h2>
 
-<p>if we want to download data from reddit, we essentially have two options. one is making an oauth request which includes logging into the reddit api with a reddit account. the downside to this method is that each user is limited to 60 oauth requests per hour, which makes it hard to download an entire comment thread and all of the relevant user meta data from comments in the thread (popular discussions usually break over 1,000 comments).</p>
+<p>Two fetch this comments from Reddit, you essentially have two options. The first is using OAUTH to actually log into the Reddit API, with the downside being that you are limited to 60 requests per hour, making it hard to download an  thread and all of the relevant user meta data (popular discussions easily exceed 1,000 comments). You can read the Reddit API documentation <a href="https://www.reddit.com/dev/api/">here</a>.</p>
 
-<p>another option is to scrape reddit, or in other words use a server to visit web pages and actually download the html content we&rsquo;re looking for ourselves, which we can then parse into whatever relevant bits we are looking for. reddit makes this process even one step easier by exposing most of their endpoints as json strings. we can see this by going to any thread on reddit and attaching a &lsquo;/.json&rsquo; to the end of the url. this allows us to easily convert these giant strings straight to json without having to create our own structure. the downside of this method is that we sometimes end up with incomplete data sets. consider the links on reddit which say &lsquo;more comments&rsquo; -&gt; by scraping reddit our data will include this &lsquo;more comments&rsquo; link without us being able to access that data directly. we could tell our server to collapse all those links, but lets just start with a general data set to get going.</p>
+<p>The option I will cover here is simply scraping a comment thread, which is essentially using a server to make HTTP requests for the pages you&rsquo;re interested in. Reddit makes this process very nice by exposing their endpoints as JSON strings, which you can see by going to any thread on reddit and appending a &lsquo;/.json&rsquo; to the end of the url. You can then parse the JSON string and begin to analyze the data. The downside of this method is that you can end up with incomplete data sets, since comments are often nested inside a &lsquo;load more comments&rsquo; link for the sites readability. As you will see, the JSON object returned to you will contain objects that have a property called &lsquo;body&rsquo; with the value &lsquo;load more comments&rsquo;.</p>
 
-<p>lets use node and expressjs to do this. we start by npm installing and setting up a basic expressjs app. expressjs is a routing framework for nodejs, a javascript development environment for creating servers.</p>
+<p>There are many different languages/frameworks one could use for this task. For this tutorial, I&rsquo;m going to use Node.js to create an API that will communicate with a client/web-app that will allow users to paste links to threads they want scraped and generate data visualizations. If you know Python, another option for doing this is using <a href="https://praw.readthedocs.io/en/stable/">PRAW</a> (I may write another tutorial with PRAW soon).</p>
+
+<p>First of all, make sure you have <a href="https://nodejs.org/en/download/">Node.js installed</a>. To begin, open your terminal, make a directory for your project, navigate inside that directory and on the command line type:</p>
+
+<pre><code>npm init</code></pre>
+
+<p>This will prompt you through some questions about your project and generate a package.json file that you will use to manage your dependencies, which you can now install in the same directory with npm (Node Package Manager):</p>
+
+<pre><code>npm install express request sentiment</code></pre>
+
+<p>Notice that you now have a node_modules folder containing the scripts for these libraries. Express is a minimal web-framework for Node.js that will make our routing very easy. Request provides extremely easy HTTP calls. Sentiment will be used for scoring the positive/negative sentiment of the comments you find. Note that sentiment is actually an oversimplified way of doing this type of positive/negative analysis but will be fine for us to with. In the future, I will write about other options for natural language processing.</p>
+
+<p>Create a file called &lsquo;server.js&rsquo;. You can now use the following code to create your server:</p>
 
 <pre><code class="javascript">
+    //server.js
 
     //declare our initial dependencies
     var express = require('express');
     var request = require('request');
+    var sentiment = require('sentiment');
 
     //initialize express
     var app = express();
@@ -195,28 +228,23 @@ How to scrape reddit if we want to download data from reddit, we essentially hav
 </pre></code>
 
 
-lets save this file as 'reddit_request.js'. we can now fire up our server by opening the command line into the directory where we saved this file and running:
+Save the file and start the server by running this command in your project directory:
 
-<pre><code>node reddit_request.js</code></pre>
+<pre><code>node server.js</code></pre>
 
-<p>Thanks to our console.log, we should get a message printed in the terminal saying &lsquo;Listening on port 8081&rsquo;. If everything is working correctly, we should be able to open our web browser to localhost:8081/scrape and see the json we returned fromt that endpoint.</p>
-
-<p>if that&rsquo;s all working, we have just created a server with an endpoint called &lsquo;/scrape&rsquo;. when use express to do our routing, we can use our client to make a get request to the server.</p>
+<p>Thanks to the console.log, you should get a message printed in the terminal saying &lsquo;Listening on port 8081&rsquo;. If everything is working correctly, you should be able to open our your browser to localhost:8081/scrape and see the JSON object with &lsquo;this is your endpoint&rsquo;. You now have an endpoint that returns data that could eventually be used by a client.</p>
 
 <h2 id="making-requests">Making Requests</h2>
 
-<p>Now lets use the request module to download the content we want from Reddit. Request is a built in NodeJS module and can be used to make HTTP and HTTPS requests, allowing us to download html or in this case, JSON strings. We are going to modify our endpoint like this:</p>
+<p>Now lets use the Request module to download the content from Reddit. Modify your &lsquo;/scrape&rsquo; endpoint with the following:</p>
 
-<pre><code class="javascript">
-
-    //
-    //
-
+<pre><code class="javascript">//server.js
+...
     app.get('/scrape', (req, res) => {
+        //pick the url of whatever thread you are interested in
         var url = 'https://www.reddit.com/r/politics/comments/5bu1u6/if_you_vote_for_trump_you_own_the_racism_yes_you/.json';
 
-        //note we won't be using the html return value in the callback, but I included it so you would know it's there
-        request('url', (err, response, html) => {
+        request(url, (err, response, body) => {
             if (err) {
                 console.log(err);
             } else {
@@ -225,25 +253,20 @@ lets save this file as 'reddit_request.js'. we can now fire up our server by ope
             }
             });
     });
+...</code></pre>
 
-    //
-    //
-
-</code></pre>
-
-<p>Now, reload the server with the &lsquo;node reddit_request.js&rsquo; command, make the same request to localhost:8081/scrape in your client. you should see a giant mess of json that is a replica of whatever thread you were looking at. I recommend using chrome and a chrome module to make the JSON collapsable and much more readable.</p>
+<p>Now, reload the server with the &lsquo;node server.js&rsquo; command, make the same request to localhost:8081/scrape in your browser. You should see a giant mess of JSON that contains whatever thread you wanted to look at. I recommend using <a href="https://chrome.google.com/webstore/detail/json-formatter/bcjindcccaagfpapjjmafapmmgkkhgoa?hl=en">JSON Formatter</a> in Chrome to make this data much more readable.</p>
 
 <h2 id="parsing-comments">Parsing Comments</h2>
 
-<p>Notice that the structure of the comments is nested in the same way they are visible on the html page. what if we want to analyze each comment individually? we would want to place each comment into a flat array. if we want to get a structure like this we will need to use recursion. We essentially want the computer to go through each comment and ask &ldquo;does this comment have any replies? if yes, then i will run the same operation of the array of comments inside of the reply property. if not, then i will continue processing the top level of the comments array&rdquo;.</p>
+<p>Notice that the structure of the comments is nested in the same way they are visible on the html page. What if you want to analyze each comment individually? You would want to place each comment into a flat array. If you want to get a structure like this you will probably want to use some form of <a href="https://en.wikipedia.org/wiki/Recursion">Recursion</a>. Essentially, you would want to tell your program to go through each comment and ask &ldquo;does this comment have any replies? if yes, then run the same operation on the array of comments inside of the reply property. If not, then continue processing the top level of the comments array&rdquo;.</p>
 
-<p>For this task, we can use a new syntax to es6 called generators. Add the following function globally, above your &lsquo;/scrape&rsquo; endpoint. We will still need to call the function later on, but lets first define and understand it.</p>
+<p>For this task, I decided to use a new syntax added to ES6 called a generator. <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/function*">Generators</a> are functions that can be exited and later re-entered and provide a nice syntax for the type of recursion you may want to do. To see a generator in action, add the following function globally, above your &lsquo;/scrape&rsquo; endpoint.</p>
 
 <pre><code class="javascript">
     //
     //
-
-    //we're passing in all of our returned comments
+    //pass in all of the returned comments
     function *findReplies(comments) {
         if (!comment) {return ;}
 
@@ -273,26 +296,20 @@ lets save this file as 'reddit_request.js'. we can now fire up our server by ope
     }
 
     app.get('/scrape', (req, res) => {
+...</code></pre>  
 
-    //
-    //
-</code></pre>  
+<p>Every time this function hits a yield statement in this function, whatever it yields will be part of a larger return. This happens in two places: the first when the comment meta data is grabbed, and second when the generator is called on itself if the comment in question contains replies. This is also where I employ the sentiment library, which gives a basic positive/negative score for the comment in question and the most important words sentiment identified in the comment body.</p>
 
-<p>Every time we hit a yield statement in this function, whatever we yield will be part of a larger return. This happens in two places: the first when we grab the comment meta data we are looking for, and the second when we call the generator itself if the comment contains comments within. A function calling itself is <a href="https://en.wikipedia.org/wiki/Recursion">Recursion</a>. This syntax yields itself nicely to what we are trying to do.</p>
+<p>Now, how can this function be called?</p>
 
-<p>Now, how do we call this function?</p>
-
-<pre><code class="javascript">
-//
-//
-
+<pre><code class="javascript">...
 app.get('/scrape', (req, res) => {
 
-    var allComments = [];
+    var flatComments = [];
 
     var url = 'https://www.reddit.com/r/politics/comments/5bu1u6/if_you_vote_for_trump_you_own_the_racism_yes_you/.json';
 
-    request('url', (err, response, html) => {
+    request(url, (err, response, html) => {
         if (err) {
             console.log(err);
         } else {
@@ -303,24 +320,22 @@ app.get('/scrape', (req, res) => {
             var getReply = findReplies(comments);
             var replyGrab = getReply.next();
 
-            //the generator has a state that we can manage inside of a while statement
+            //the generator has a state that you can manage inside of a while statement
             while (!replyGrab.done) {
-              allComments.push(replyGrab.value);
+              flatComments.push(replyGrab.value);
               replyGrab = getReply.next();
             }
 
-            //once the generator is finished, we can send our parsed data back to the client
+            //once the generator is finished, you can send our parsed data back to the client
             if (replyGrab.done) {
-                res.json({header: header, comments: allComments });
+                res.json({title: url, comments: flatComments });
             }
         }
         });
 });
-//
-//
-</code></pre>
+...</code></pre>
 
-<p>Now, open your browser again and double check that the data is being sent back. In next installments, we will take a lot at asynchronously fetching user comments, other options for language processing, and creating a ReactJS client to visualize data.</p>
+<p>Now, open your browser again and double check that the data is being sent back. From here, you can write this data to file, save it to a database, or whatever else you like. To view the final code, visit <a href="https://github.com/MitchRivet/reddit_scrape_tutorial">my github repository</a>. In next installments, I will take a lot at asynchronously fetching all of the user comments inside a thread, other options for language processing, and creating a ReactJS client to visualize data.</p>
 
     </section>
 
@@ -380,7 +395,7 @@ app.get('/scrape', (req, res) => {
 
 <div id="disqus_thread"></div>
 <script type="text/javascript">
-  var disqus_shortname = 'your_disqus_shortname';
+  var disqus_shortname = 'mitch-blog-1';
   var disqus_url = 'http:\/\/mitchrivet.github.io\/analyzing-reddit-comments-scraping-part-1';
   (function() {
     var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;

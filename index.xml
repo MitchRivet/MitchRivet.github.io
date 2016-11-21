@@ -17,21 +17,44 @@
       <guid>http://mitchrivet.github.io/analyzing-reddit-comments-scraping-part-1</guid>
       <description>
 
-&lt;p&gt;A place to start when getting into data science is to find data sets that are personally relevant and/or interesting. one place i like to get data to understand more about internet discourse is reddit.&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;
+We are in an age where internet discourse has a serious impact on virtually every aspect of our society, making the analysis of user comments in a site like reddit a tantalizing data set (for better and worse). In this tutorial, I will go over:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Scraping reddit&lt;/li&gt;
+&lt;li&gt;Setting up a basic Node.js/ExpressJS server&lt;/li&gt;
+&lt;li&gt;Using ES6 generators to help parse a set of nested comments and give comments a basic sentiment score&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/MitchRivet/reddit_scrape_tutorial&#34;&gt;Final code found in this repository&lt;/a&gt;.&lt;/p&gt;
 
 &lt;h2 id=&#34;how-to-scrape-reddit&#34;&gt;How to scrape reddit&lt;/h2&gt;
 
-&lt;p&gt;if we want to download data from reddit, we essentially have two options. one is making an oauth request which includes logging into the reddit api with a reddit account. the downside to this method is that each user is limited to 60 oauth requests per hour, which makes it hard to download an entire comment thread and all of the relevant user meta data from comments in the thread (popular discussions usually break over 1,000 comments).&lt;/p&gt;
+&lt;p&gt;Two fetch this comments from Reddit, you essentially have two options. The first is using OAUTH to actually log into the Reddit API, with the downside being that you are limited to 60 requests per hour, making it hard to download an  thread and all of the relevant user meta data (popular discussions easily exceed 1,000 comments). You can read the Reddit API documentation &lt;a href=&#34;https://www.reddit.com/dev/api/&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;
 
-&lt;p&gt;another option is to scrape reddit, or in other words use a server to visit web pages and actually download the html content we&amp;rsquo;re looking for ourselves, which we can then parse into whatever relevant bits we are looking for. reddit makes this process even one step easier by exposing most of their endpoints as json strings. we can see this by going to any thread on reddit and attaching a &amp;lsquo;/.json&amp;rsquo; to the end of the url. this allows us to easily convert these giant strings straight to json without having to create our own structure. the downside of this method is that we sometimes end up with incomplete data sets. consider the links on reddit which say &amp;lsquo;more comments&amp;rsquo; -&amp;gt; by scraping reddit our data will include this &amp;lsquo;more comments&amp;rsquo; link without us being able to access that data directly. we could tell our server to collapse all those links, but lets just start with a general data set to get going.&lt;/p&gt;
+&lt;p&gt;The option I will cover here is simply scraping a comment thread, which is essentially using a server to make HTTP requests for the pages you&amp;rsquo;re interested in. Reddit makes this process very nice by exposing their endpoints as JSON strings, which you can see by going to any thread on reddit and appending a &amp;lsquo;/.json&amp;rsquo; to the end of the url. You can then parse the JSON string and begin to analyze the data. The downside of this method is that you can end up with incomplete data sets, since comments are often nested inside a &amp;lsquo;load more comments&amp;rsquo; link for the sites readability. As you will see, the JSON object returned to you will contain objects that have a property called &amp;lsquo;body&amp;rsquo; with the value &amp;lsquo;load more comments&amp;rsquo;.&lt;/p&gt;
 
-&lt;p&gt;lets use node and expressjs to do this. we start by npm installing and setting up a basic expressjs app. expressjs is a routing framework for nodejs, a javascript development environment for creating servers.&lt;/p&gt;
+&lt;p&gt;There are many different languages/frameworks one could use for this task. For this tutorial, I&amp;rsquo;m going to use Node.js to create an API that will communicate with a client/web-app that will allow users to paste links to threads they want scraped and generate data visualizations. If you know Python, another option for doing this is using &lt;a href=&#34;https://praw.readthedocs.io/en/stable/&#34;&gt;PRAW&lt;/a&gt; (I may write another tutorial with PRAW soon).&lt;/p&gt;
+
+&lt;p&gt;First of all, make sure you have &lt;a href=&#34;https://nodejs.org/en/download/&#34;&gt;Node.js installed&lt;/a&gt;. To begin, open your terminal, make a directory for your project, navigate inside that directory and on the command line type:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;npm init&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This will prompt you through some questions about your project and generate a package.json file that you will use to manage your dependencies, which you can now install in the same directory with npm (Node Package Manager):&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;npm install express request sentiment&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Notice that you now have a node_modules folder containing the scripts for these libraries. Express is a minimal web-framework for Node.js that will make our routing very easy. Request provides extremely easy HTTP calls. Sentiment will be used for scoring the positive/negative sentiment of the comments you find. Note that sentiment is actually an oversimplified way of doing this type of positive/negative analysis but will be fine for us to with. In the future, I will write about other options for natural language processing.&lt;/p&gt;
+
+&lt;p&gt;Create a file called &amp;lsquo;server.js&amp;rsquo;. You can now use the following code to create your server:&lt;/p&gt;
 
 &lt;pre&gt;&lt;code class=&#34;javascript&#34;&gt;
+    //server.js
 
     //declare our initial dependencies
     var express = require(&#39;express&#39;);
     var request = require(&#39;request&#39;);
+    var sentiment = require(&#39;sentiment&#39;);
 
     //initialize express
     var app = express();
@@ -48,28 +71,23 @@
 &lt;/pre&gt;&lt;/code&gt;
 
 
-lets save this file as &#39;reddit_request.js&#39;. we can now fire up our server by opening the command line into the directory where we saved this file and running:
+Save the file and start the server by running this command in your project directory:
 
-&lt;pre&gt;&lt;code&gt;node reddit_request.js&lt;/code&gt;&lt;/pre&gt;
+&lt;pre&gt;&lt;code&gt;node server.js&lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;Thanks to our console.log, we should get a message printed in the terminal saying &amp;lsquo;Listening on port 8081&amp;rsquo;. If everything is working correctly, we should be able to open our web browser to localhost:8081/scrape and see the json we returned fromt that endpoint.&lt;/p&gt;
-
-&lt;p&gt;if that&amp;rsquo;s all working, we have just created a server with an endpoint called &amp;lsquo;/scrape&amp;rsquo;. when use express to do our routing, we can use our client to make a get request to the server.&lt;/p&gt;
+&lt;p&gt;Thanks to the console.log, you should get a message printed in the terminal saying &amp;lsquo;Listening on port 8081&amp;rsquo;. If everything is working correctly, you should be able to open our your browser to localhost:8081/scrape and see the JSON object with &amp;lsquo;this is your endpoint&amp;rsquo;. You now have an endpoint that returns data that could eventually be used by a client.&lt;/p&gt;
 
 &lt;h2 id=&#34;making-requests&#34;&gt;Making Requests&lt;/h2&gt;
 
-&lt;p&gt;Now lets use the request module to download the content we want from Reddit. Request is a built in NodeJS module and can be used to make HTTP and HTTPS requests, allowing us to download html or in this case, JSON strings. We are going to modify our endpoint like this:&lt;/p&gt;
+&lt;p&gt;Now lets use the Request module to download the content from Reddit. Modify your &amp;lsquo;/scrape&amp;rsquo; endpoint with the following:&lt;/p&gt;
 
-&lt;pre&gt;&lt;code class=&#34;javascript&#34;&gt;
-
-    //
-    //
-
+&lt;pre&gt;&lt;code class=&#34;javascript&#34;&gt;//server.js
+...
     app.get(&#39;/scrape&#39;, (req, res) =&gt; {
+        //pick the url of whatever thread you are interested in
         var url = &#39;https://www.reddit.com/r/politics/comments/5bu1u6/if_you_vote_for_trump_you_own_the_racism_yes_you/.json&#39;;
 
-        //note we won&#39;t be using the html return value in the callback, but I included it so you would know it&#39;s there
-        request(&#39;url&#39;, (err, response, html) =&gt; {
+        request(url, (err, response, body) =&gt; {
             if (err) {
                 console.log(err);
             } else {
@@ -78,25 +96,20 @@ lets save this file as &#39;reddit_request.js&#39;. we can now fire up our serve
             }
             });
     });
+...&lt;/code&gt;&lt;/pre&gt;
 
-    //
-    //
-
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;Now, reload the server with the &amp;lsquo;node reddit_request.js&amp;rsquo; command, make the same request to localhost:8081/scrape in your client. you should see a giant mess of json that is a replica of whatever thread you were looking at. I recommend using chrome and a chrome module to make the JSON collapsable and much more readable.&lt;/p&gt;
+&lt;p&gt;Now, reload the server with the &amp;lsquo;node server.js&amp;rsquo; command, make the same request to localhost:8081/scrape in your browser. You should see a giant mess of JSON that contains whatever thread you wanted to look at. I recommend using &lt;a href=&#34;https://chrome.google.com/webstore/detail/json-formatter/bcjindcccaagfpapjjmafapmmgkkhgoa?hl=en&#34;&gt;JSON Formatter&lt;/a&gt; in Chrome to make this data much more readable.&lt;/p&gt;
 
 &lt;h2 id=&#34;parsing-comments&#34;&gt;Parsing Comments&lt;/h2&gt;
 
-&lt;p&gt;Notice that the structure of the comments is nested in the same way they are visible on the html page. what if we want to analyze each comment individually? we would want to place each comment into a flat array. if we want to get a structure like this we will need to use recursion. We essentially want the computer to go through each comment and ask &amp;ldquo;does this comment have any replies? if yes, then i will run the same operation of the array of comments inside of the reply property. if not, then i will continue processing the top level of the comments array&amp;rdquo;.&lt;/p&gt;
+&lt;p&gt;Notice that the structure of the comments is nested in the same way they are visible on the html page. What if you want to analyze each comment individually? You would want to place each comment into a flat array. If you want to get a structure like this you will probably want to use some form of &lt;a href=&#34;https://en.wikipedia.org/wiki/Recursion&#34;&gt;Recursion&lt;/a&gt;. Essentially, you would want to tell your program to go through each comment and ask &amp;ldquo;does this comment have any replies? if yes, then run the same operation on the array of comments inside of the reply property. If not, then continue processing the top level of the comments array&amp;rdquo;.&lt;/p&gt;
 
-&lt;p&gt;For this task, we can use a new syntax to es6 called generators. Add the following function globally, above your &amp;lsquo;/scrape&amp;rsquo; endpoint. We will still need to call the function later on, but lets first define and understand it.&lt;/p&gt;
+&lt;p&gt;For this task, I decided to use a new syntax added to ES6 called a generator. &lt;a href=&#34;https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/function*&#34;&gt;Generators&lt;/a&gt; are functions that can be exited and later re-entered and provide a nice syntax for the type of recursion you may want to do. To see a generator in action, add the following function globally, above your &amp;lsquo;/scrape&amp;rsquo; endpoint.&lt;/p&gt;
 
 &lt;pre&gt;&lt;code class=&#34;javascript&#34;&gt;
     //
     //
-
-    //we&#39;re passing in all of our returned comments
+    //pass in all of the returned comments
     function *findReplies(comments) {
         if (!comment) {return ;}
 
@@ -126,26 +139,20 @@ lets save this file as &#39;reddit_request.js&#39;. we can now fire up our serve
     }
 
     app.get(&#39;/scrape&#39;, (req, res) =&gt; {
+...&lt;/code&gt;&lt;/pre&gt;  
 
-    //
-    //
-&lt;/code&gt;&lt;/pre&gt;  
+&lt;p&gt;Every time this function hits a yield statement in this function, whatever it yields will be part of a larger return. This happens in two places: the first when the comment meta data is grabbed, and second when the generator is called on itself if the comment in question contains replies. This is also where I employ the sentiment library, which gives a basic positive/negative score for the comment in question and the most important words sentiment identified in the comment body.&lt;/p&gt;
 
-&lt;p&gt;Every time we hit a yield statement in this function, whatever we yield will be part of a larger return. This happens in two places: the first when we grab the comment meta data we are looking for, and the second when we call the generator itself if the comment contains comments within. A function calling itself is &lt;a href=&#34;https://en.wikipedia.org/wiki/Recursion&#34;&gt;Recursion&lt;/a&gt;. This syntax yields itself nicely to what we are trying to do.&lt;/p&gt;
+&lt;p&gt;Now, how can this function be called?&lt;/p&gt;
 
-&lt;p&gt;Now, how do we call this function?&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;javascript&#34;&gt;
-//
-//
-
+&lt;pre&gt;&lt;code class=&#34;javascript&#34;&gt;...
 app.get(&#39;/scrape&#39;, (req, res) =&gt; {
 
-    var allComments = [];
+    var flatComments = [];
 
     var url = &#39;https://www.reddit.com/r/politics/comments/5bu1u6/if_you_vote_for_trump_you_own_the_racism_yes_you/.json&#39;;
 
-    request(&#39;url&#39;, (err, response, html) =&gt; {
+    request(url, (err, response, html) =&gt; {
         if (err) {
             console.log(err);
         } else {
@@ -156,24 +163,22 @@ app.get(&#39;/scrape&#39;, (req, res) =&gt; {
             var getReply = findReplies(comments);
             var replyGrab = getReply.next();
 
-            //the generator has a state that we can manage inside of a while statement
+            //the generator has a state that you can manage inside of a while statement
             while (!replyGrab.done) {
-              allComments.push(replyGrab.value);
+              flatComments.push(replyGrab.value);
               replyGrab = getReply.next();
             }
 
-            //once the generator is finished, we can send our parsed data back to the client
+            //once the generator is finished, you can send our parsed data back to the client
             if (replyGrab.done) {
-                res.json({header: header, comments: allComments });
+                res.json({title: url, comments: flatComments });
             }
         }
         });
 });
-//
-//
-&lt;/code&gt;&lt;/pre&gt;
+...&lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;Now, open your browser again and double check that the data is being sent back. In next installments, we will take a lot at asynchronously fetching user comments, other options for language processing, and creating a ReactJS client to visualize data.&lt;/p&gt;
+&lt;p&gt;Now, open your browser again and double check that the data is being sent back. From here, you can write this data to file, save it to a database, or whatever else you like. To view the final code, visit &lt;a href=&#34;https://github.com/MitchRivet/reddit_scrape_tutorial&#34;&gt;my github repository&lt;/a&gt;. In next installments, I will take a lot at asynchronously fetching all of the user comments inside a thread, other options for language processing, and creating a ReactJS client to visualize data.&lt;/p&gt;
 </description>
     </item>
     
@@ -185,7 +190,8 @@ app.get(&#39;/scrape&#39;, (req, res) =&gt; {
       <guid>http://mitchrivet.github.io/why-blog</guid>
       <description>
 
-&lt;p&gt;Here are the practical reasons I see for maintaining a blog:&lt;/p&gt;
+&lt;p&gt;&lt;br&gt;
+As I begin my journey with this blog, here are the practical reasons I see blogging:&lt;/p&gt;
 
 &lt;h2 id=&#34;1-generate-better-ideas&#34;&gt;1. Generate better ideas&lt;/h2&gt;
 
@@ -195,27 +201,21 @@ app.get(&#39;/scrape&#39;, (req, res) =&gt; {
 
 &lt;p&gt;Even though there are tons of online resources for learning programming topics, there is always value in sharing tutorials for niche subjects and explaining ideas using your own analogies and mental processes. I have often found explanations shared to me by my peers to be the most memorable. It&amp;rsquo;s also commonly said that the best way to learn something yourself is to &lt;a href=&#34;http://www.futurity.org/learning-students-teaching-741342&#34;&gt;teach others&lt;/a&gt;.&lt;/p&gt;
 
-&lt;h2 id=&#34;3-improve-your-process-by-regularly-collecting-data&#34;&gt;3. Improve your process by regularly collecting data&lt;/h2&gt;
+&lt;h2 id=&#34;3-regular-reflection-will-improve-your-process&#34;&gt;3. Regular reflection will improve your process&lt;/h2&gt;
+
+&lt;p&gt;Your blog can become a data set of personal assessments, allowing you to see what aspects of your workflow are helping you or hindering you. In this sense, blogging combines the reflective process of journaling with a method to improve your ability to showcase your own work. By logging the successes and failures of your projects over time, you can gain a more macro sense of your accomplishments rather than a micro impression of one particular work day.&lt;/p&gt;
 
 &lt;h2 id=&#34;4-create-social-accountability&#34;&gt;4. Create social accountability&lt;/h2&gt;
 
+&lt;p&gt;Sharing your goals with others is a way to help push yourself to actually finish them. By posting about a project, you&amp;rsquo;re essentially making a promise to the internet that you will actually, eventually finish it. It&amp;rsquo;s extremely easy to let an idea fall by the wayside when no one is holding your accountable.&lt;/p&gt;
+
 &lt;h2 id=&#34;5-if-your-work-is-not-online-it-doesn-t-exist&#34;&gt;5. &amp;ldquo;If your work is not online, it doesn&amp;rsquo;t exist&amp;rdquo;&lt;/h2&gt;
 
-&lt;p&gt;Taken from the lovely book [&amp;ldquo;Show Your Work!&amp;rdquo; by Austin Kleon]()&lt;/p&gt;
+&lt;p&gt;Taken from the lovely book &lt;a href=&#34;https://www.amazon.com/dp/B00GU2RGGI/ref=dp-kindle-redirect?_encoding=UTF8&amp;amp;btkr=1&#34;&gt;&amp;ldquo;Show Your Work!&amp;rdquo; by Austin Kleon&lt;/a&gt;. Today more than ever it is important to maintain an online presence for your career.&lt;/p&gt;
 
-&lt;h2 id=&#34;6-give-others-insight-into-what-you-are-doing-right-now&#34;&gt;6. Give others insight into what you are doing right now&lt;/h2&gt;
+&lt;hr&gt;
 
-&lt;p&gt;I plan to include software development tutorials, notes from the topics I&amp;rsquo;m currently studying, as well as essays about music and audio production. Whenever I finish a book, I will also share the notes I took and my opinion of it, inspired by &lt;a href=&#34;https://sivers.org/book&#34;&gt;Derek Sivers&lt;/a&gt;.&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>About Mitch</title>
-      <link>http://mitchrivet.github.io/about/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>http://mitchrivet.github.io/about/</guid>
-      <description>&lt;p&gt;something something something&lt;/p&gt;
+&lt;p&gt;I plan to include software development tutorials, notes from the topics I&amp;rsquo;m currently studying, as well as essays about music and audio production. Whenever I finish a book, I will also share the notes I took and my opinion of it, inspired by &lt;a href=&#34;https://sivers.org/book&#34;&gt;Derek Sivers&lt;/a&gt;. After blogging for a while, I will write a follow post to share what effects I have experienced from this practice.&lt;/p&gt;
 </description>
     </item>
     
